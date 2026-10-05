@@ -1,0 +1,46 @@
+# ---- 用户数据：绝不提交 ----
+# 训练素材（音频）、训练产物、权重、导出清单
+voice-training/data/**
+!voice-training/data/.gitkeep
+voice-training/out/**
+voice-training/checkpoints/**
+voice-training/**/*.ckpt
+voice-training/**/*.pth
+voice-training/**/*.safetensors
+voice-training/**/*.onnx
+voice-training/**/*.index
+# 本机生成的清单（示例清单模板 `manifests/example.manifest.json` 例外，它是文档的一部分）
+voice-training/manifests/*.local.json
+
+# ---- 密钥：绝不提交 ----
+.env
+.env.*
+*.key
+secrets.json
+config.local.json
+# 注意：本插件的 API Key 只存在浏览器 sessionStorage，本来就不会落盘；
+# 上面这几条是为了防止你自己调后端时手滑把密钥写进仓库。
+
+# ---- 依赖与构建产物 ----
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# ---- 编辑器 / 系统 ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 临时文件 ----
+*.tmp
+*.bak
+.cache/
+coverage/

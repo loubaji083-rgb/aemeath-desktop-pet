@@ -1,0 +1,50 @@
+{
+  "name": "aemeath-desktop-pet-dsh-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "把本仓库的 web/ 目录（原创 Q 版 Canvas 桌宠 + 聊天 + 语音 + 训练工具链）作为静态站点挂到 DSH 的 webServer 上，并在 DSH Web/桌面壳的 index 里注入一个悬浮入口按钮。仓库主体零运行时依赖，本插件同样零运行时依赖。",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "desktop-pet",
+    "aemeath"
+  ],
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./static-server": "./static-server.mjs",
+    "./serve-cli": "./serve-cli.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "static-server.mjs",
+    "serve-cli.mjs",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "serve": "node serve-cli.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.1.2-rc.1 <0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

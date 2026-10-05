@@ -1,0 +1,127 @@
+name: CI
+
+# 本仓库是「零 npm 依赖」的纯原生 ES Module 前端 + 一个零依赖 DSH 插件，
+# 所以 CI **不需要 npm install** —— 跑起来只有 node + 仓库文件。
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 静态自检 + 测试（Node ${{ matrix.node }}）
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # package.json 的 engines 是 '^22.19.0 || >=24.0.0'，两条都真跑
+        node: ['22', '24']
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Node（不装依赖）
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 打印环境（便于排查）
+        run: |
+          node --version
+          echo "--- 仓库结构（顶层）---"
+          ls -1
+
+      # ────────────────────────────────────────────────────────────────
+      # 第 1 关：静态托管自检 —— 真起服务，把 index.html 引到的每个资源都拉一遍
+      # ────────────────────────────────────────────────────────────────
+      - name: 1/6 静态托管自检（selfcheck-http）
+        run: node tools/selfcheck-http.mjs
+
+      # ────────────────────────────────────────────────────────────────
+      # 第 2 关：模块导出契约 —— 真 import 每个模块，核对导出名与 PetUI 12 个动作
+      # ────────────────────────────────────────────────────────────────
+      - name: 2/6 模块导出契约自检（selfcheck-modules）
+        run: node tools/selfcheck-modules.mjs
+
+      # ────────────────────────────────────────────────────────────────
+      # 第 3 关：api 契约自检（真 import，含 busy.js 再导出守卫）
+      # ────────────────────────────────────────────────────────────────
+      - name: 3/6 模块 API 自检（selfcheck-api）
+        run: node tools/selfcheck-api.mjs
+
+      # ────────────────────────────────────────────────────────────────
+      # 第 4 关：白屏级冒烟 —— 在 Node 里真加载 web/js/app.js
+      #   这一关的价值：模块图链接错误（does not provide an export named 'x'）
+      #   与顶层裸 DOM 副作用都会在这里炸出来，而单元测试看不见。
+      # ────────────────────────────────────────────────────────────────
+      - name: 4/6 app.js 加载冒烟（smoke-app-import）
+        run: node tools/smoke-app-import.mjs
+
+      # ────────────────────────────────────────────────────────────────
+      # 第 5 关：首帧渲染冒烟 —— 校验渲染参数全部有限、部件没溢出画布
+      # ────────────────────────────────────────────────────────────────
+      - name: 5/6 首帧渲染冒烟（smoke-pet-frame）
+        run: node tools/smoke-pet-frame.mjs
+
+      # ────────────────────────────────────────────────────────────────
+      # 第 6 关：单元测试与契约哨兵
+      #
+      # 两条硬约束（都踩过坑，别改）：
+      #  (a) 必须写 `tests/*.test.mjs`。`node --test tests/` 在 Node 22 下直接报
+      #      `Error: Cannot find module '.../tests'`（Node 把目录当入口模块 require），
+      #      加尾斜杠也没用。
+      #  (b) **不能只看退出码**。node:test 的 `# fail` 只统计**顶层** subtest，
+      #      子测试的 `not ok` 会被漏计；而全 skip 时退出码仍然是 0。
+      #      所以这里显式复核：`# fail 0` + `not ok` 行数必须能被 TODO/SKIP 解释掉。
+      # ────────────────────────────────────────────────────────────────
+      - name: 6/6 单元测试与契约哨兵（node --test tests/*.test.mjs）
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test tests/*.test.mjs 2>&1 | tee /tmp/test-output.txt
+          echo "──────── TAP 复核 ────────"
+          grep -E '^# (tests|pass|fail|skipped|todo) ' /tmp/test-output.txt || true
+
+          fail=$(grep -E '^# fail [0-9]+$' /tmp/test-output.txt | awk '{print $3}')
+          todo=$(grep -E '^# todo [0-9]+$' /tmp/test-output.txt | awk '{print $3}')
+          pass=$(grep -E '^# pass [0-9]+$' /tmp/test-output.txt | awk '{print $3}')
+          # 子测试的 not ok 行是**缩进**的，必须用 [[:space:]]* 前缀匹配
+          not_ok=$(grep -cE '^[[:space:]]*not ok [0-9]+' /tmp/test-output.txt || true)
+          not_ok_todo=$(grep -E '^[[:space:]]*not ok [0-9]+.*# TODO' /tmp/test-output.txt | wc -l | tr -d ' ')
+          not_ok_skip=$(grep -E '^[[:space:]]*not ok [0-9]+.*# SKIP' /tmp/test-output.txt | wc -l | tr -d ' ')
+
+          echo "fail=$fail pass=$pass todo=$todo not_ok=$not_ok (TODO=$not_ok_todo SKIP=$not_ok_skip)"
+
+          if [ -z "$fail" ] || [ -z "$pass" ]; then
+            echo "::error::找不到 # fail / # pass 行，TAP 输出可疑"; exit 1
+          fi
+          if [ "$fail" != "0" ]; then
+            echo "::error::有 $fail 条顶层测试失败"; exit 1
+          fi
+          if [ "$pass" -lt 60 ]; then
+            echo "::error::只通过 $pass 条，明显少于预期（用例被跳过或文件没被加载？）"; exit 1
+          fi
+          unexplained=$((not_ok - not_ok_todo - not_ok_skip))
+          if [ "$unexplained" -gt 0 ]; then
+            echo "::error::$not_ok 条 not ok 里有 $unexplained 条既不是 TODO 也不是 SKIP"; exit 1
+          fi
+          if [ "$not_ok_todo" != "$todo" ]; then
+            echo "::error::not ok 的 TODO 行($not_ok_todo)与 # todo($todo) 不一致"; exit 1
+          fi
+          echo "✅ TAP 复核通过：$pass pass / $fail fail / $todo todo（$not_ok 条 not ok 全部可解释）"
+
+      # ────────────────────────────────────────────────────────────────
+      # 插件侧：训练数据集校验脚本的 CLI 冒烟
+      #   `--help` 必须存在且退出码 0（脚本会在无参数时打印用法）
+      # ────────────────────────────────────────────────────────────────
+      - name: 训练数据集校验脚本冒烟（validate-dataset --help）
+        run: node voice-training/scripts/validate-dataset.mjs --help

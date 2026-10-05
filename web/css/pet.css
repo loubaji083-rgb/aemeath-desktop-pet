@@ -1,0 +1,139 @@
+/* ==========================================================================
+   爱弥斯桌宠 · pet.css  ——  归属 A（web/js/pet/** 的配套样式）
+   ==========================================================================
+
+   职责边界（重要）：
+   - **盒子模型与定位不在这里**。`#pet-stage`（.pet-layer）的 fixed 定位、尺寸、
+     z-index、`transform-origin`，以及 `#aemeath-canvas` 的 `display/width/height`，
+     全部由 `web/css/app.css`（Lead 的外壳样式）定义；pet.css 在 app.css 之后加载，
+     所以这里**只做增量**，绝不重写上面的几何规则，避免和外壳打架。
+   - 本文件负责桌宠层自己的事：状态类、光标语义、透明桌宠模式、无障碍与
+     强制色彩/减少动态等系统偏好回退。
+   - 形象本体 100% 由 Canvas 2D 逐帧绘制（`web/js/pet/draw.js`），
+     所以这里**没有任何形象相关的关键帧动画**，只有容器层面的修饰。
+
+   由 JS 切换的状态类（都挂在 `#aemeath-canvas` 上，见 web/js/pet/index.js）：
+     .pet-ready      挂载完成
+     .pet-dragging   拖拽中
+     .pet-speaking   语音播报中（口型由 setMouth 驱动）
+     .pet-listening  拾音中
+     .pet-thinking   思考中（PET_THINK）
+   另外 app.js 会在 `#pet-stage` 上切换 `.is-dragging` / `.is-hover`，
+   下面只补光标，不重复定义 app.css 已有规则。
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. 容器修饰
+   -------------------------------------------------------------------------- */
+
+/* 放大（pet.scale > 1）后画布会超出 360×480 的层盒子，必须允许溢出，
+   否则头顶气泡和特效会被裁掉。 */
+.pet-canvas-wrap {
+  overflow: visible;
+}
+
+/* 画布本体：永不接受浏览器手势（拖拽/缩放/双击缩放），交给 Pointer Events 处理。
+   注：touch-action 在 .pet-layer 上已设过，这里对画布补一份，避免将来外壳改动丢失。 */
+#aemeath-canvas {
+  touch-action: none;
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+
+/* 拖拽时禁止文本选中与光标闪烁 */
+.pet-layer.is-dragging,
+#aemeath-canvas.pet-dragging {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#aemeath-canvas.pet-ready {
+  cursor: grab;
+}
+
+/* 说话/聆听/思考是"内容层"状态，视觉全部画在 canvas 上；
+   这里只登记成显式钩子，方便宿主或插件按状态加外部装饰。 */
+#aemeath-canvas.pet-speaking,
+#aemeath-canvas.pet-listening,
+#aemeath-canvas.pet-thinking {
+  cursor: inherit;
+}
+
+/* --------------------------------------------------------------------------
+   2. 透明桌宠模式（Electron / OBS / 浏览器透明窗口）
+   app.css 只处理了 body 背景与面板隐藏，这里补桌宠层的适配。
+   -------------------------------------------------------------------------- */
+
+body.ae-transparent .pet-layer {
+  /* 透明模式下桌宠是唯一主体，抬到最上层 */
+  z-index: 9999;
+}
+
+body.ae-transparent #aemeath-canvas {
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+}
+
+/* 透明背景下 DOM 兜底气泡（core/busy.js 在 PetUI 缺席时才写）需要更强的底，
+   否则浅色桌面上会看不清。 */
+body.ae-transparent .pet-reminder {
+  background: rgba(20, 22, 32, 0.88);
+  color: #eef0f6;
+  border-color: rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(10px);
+}
+
+/* --------------------------------------------------------------------------
+   3. 无障碍
+   -------------------------------------------------------------------------- */
+
+/* 画布可以用 Tab 聚焦（index.html 未设 tabindex，这里只给可见焦点环备用） */
+#aemeath-canvas:focus-visible {
+  outline: 2px solid var(--ae-accent, #ff8ec4);
+  outline-offset: 3px;
+  border-radius: var(--ae-radius, 14px);
+}
+
+/* 系统"减少动态效果"：图形动画由 JS 的 Rig.setReducedMotion 降幅，
+   这里额外关掉容器上的过渡，保证不会有 CSS 层面的位移残影。 */
+@media (prefers-reduced-motion: reduce) {
+  .pet-layer,
+  .pet-canvas-wrap,
+  #aemeath-canvas {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Windows 高对比度模式：强制色彩会把 canvas 当图片处理而失真，
+   forced-color-adjust:none 让程序化绘制保留自己的配色。 */
+@media (forced-colors: active) {
+  #aemeath-canvas {
+    forced-color-adjust: none;
+  }
+
+  .pet-layer {
+    /* 高对比度下给桌宠一个可见边界，便于定位 */
+    outline: 1px solid CanvasText;
+  }
+}
+
+@media (prefers-contrast: more) {
+  #aemeath-canvas {
+    filter: contrast(1.12) saturate(1.06);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   4. 窄屏：桌宠缩到角落，不再遮挡主要内容
+   注：几何基座仍由 app.css 的媒体查询决定，这里只做"别抢鼠标"的收尾。
+   -------------------------------------------------------------------------- */
+@media (max-width: 720px) {
+  #aemeath-canvas.pet-ready {
+    cursor: pointer;
+  }
+}

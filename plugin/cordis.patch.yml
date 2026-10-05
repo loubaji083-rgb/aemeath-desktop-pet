@@ -1,0 +1,21 @@
+# ============================================================================
+# aemeath-desktop-pet-dsh-plugin —— DSH bundle patch
+# ============================================================================
+# 这是插件的「挂载声明」。DSH 启动时按 bundle 层叠加各插件的 patch，
+# 本文件把爱弥斯桌宠插件插进目标 profile 的配置树。
+#
+# 安装方式（不需要手工改 profile 的 patch）：
+#   dsh plugin --profile web add link:<本目录绝对路径>
+# 或从 npm 安装：
+#   dsh plugin --profile web add aemeath-desktop-pet-dsh-plugin
+#
+# 卸载/禁用：
+#   dsh plugin --profile web remove aemeath-desktop-pet-dsh-plugin
+#   —— 禁用后本插件注册的 `/aemeath` 路由会被 disposer 撤掉，
+#      而注入进 index 的那段脚本会自行捕获加载失败（见 index.js 注释），
+#      不会像 kind:'script-src' 那样把整个 boot 拖崩。
+# ============================================================================
+
+- insert:
+    - id: aemeath-desktop-pet
+      name: aemeath-desktop-pet-dsh-plugin

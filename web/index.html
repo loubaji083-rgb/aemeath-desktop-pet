@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark light" />
+<title>爱弥斯 · 桌面宠物</title>
+<meta name="description" content="原创 Q 版桌面宠物：Live2D 风格动态形象、点击互动、DeepSeek 文字聊天、浏览器语音对话、用户自备数据的声音训练工具链。" />
+<link rel="stylesheet" href="./css/app.css" />
+<link rel="stylesheet" href="./css/pet.css" />
+</head>
+<body data-theme="dark">
+<div id="app" class="app">
+
+  <!-- ========== 桌宠层（可拖拽，右下角停靠） ========== -->
+  <div id="pet-stage" class="pet-layer" role="application" aria-label="爱弥斯桌宠">
+    <div id="pet-canvas-wrap" class="pet-canvas-wrap">
+      <canvas id="aemeath-canvas" width="360" height="480" aria-label="爱弥斯形象"></canvas>
+      <div id="pet-reminder" class="pet-reminder hidden" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <!-- ========== 左侧工具栏 ========== -->
+  <nav id="panel-dock" class="panel-dock" aria-label="功能面板">
+    <button type="button" class="dock-btn" data-panel="chat" title="聊天 (Ctrl+1)" aria-label="聊天">
+      <span class="dock-ico" aria-hidden="true">💬</span><span class="dock-label">聊天</span>
+    </button>
+    <button type="button" class="dock-btn" data-panel="voice" title="语音 (Ctrl+2)" aria-label="语音">
+      <span class="dock-ico" aria-hidden="true">🎙️</span><span class="dock-label">语音</span>
+    </button>
+    <button type="button" class="dock-btn" data-panel="train" title="声音训练 (Ctrl+3)" aria-label="声音训练">
+      <span class="dock-ico" aria-hidden="true">🧪</span><span class="dock-label">训练</span>
+    </button>
+    <button type="button" class="dock-btn" data-panel="settings" title="设置 (Ctrl+4)" aria-label="设置">
+      <span class="dock-ico" aria-hidden="true">⚙️</span><span class="dock-label">设置</span>
+    </button>
+  </nav>
+
+  <!-- ========== 聊天面板 ========== -->
+  <aside id="panel-chat" class="panel panel-chat" data-panel="chat" aria-label="聊天面板" aria-hidden="true">
+    <header class="panel-head">
+      <h2 class="panel-title">和小爱聊天</h2>
+      <div class="panel-head-actions">
+        <span id="chat-status" class="chip chip-idle">未连接</span>
+        <button type="button" class="icon-btn" data-panel-close="chat" title="关闭" aria-label="关闭">✕</button>
+      </div>
+    </header>
+
+    <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+
+    <div id="chat-typing" class="chat-typing hidden">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="chat-typing-text">小爱正在想…</span>
+    </div>
+
+    <footer class="chat-composer">
+      <textarea id="chat-input" class="chat-input" rows="2"
+        placeholder="说点什么吧…（Enter 发送，Shift+Enter 换行）" aria-label="输入消息"></textarea>
+      <div class="chat-composer-row">
+        <div class="chat-composer-left">
+          <button type="button" id="chat-mic" class="icon-btn" title="语音输入" aria-label="语音输入">🎤</button>
+          <button type="button" id="chat-speak-toggle" class="icon-btn" title="朗读回复" aria-label="朗读回复" aria-pressed="false">🔊</button>
+          <button type="button" id="chat-abort" class="icon-btn hidden" title="停止生成" aria-label="停止生成">⏹</button>
+        </div>
+        <div class="chat-composer-right">
+          <button type="button" id="chat-clear" class="ghost-btn" title="清空对话">清空</button>
+          <button type="button" id="chat-send" class="primary-btn">发送</button>
+        </div>
+      </div>
+      <p id="chat-hint" class="hint"></p>
+    </footer>
+  </aside>
+
+  <!-- ========== 语音面板 ========== -->
+  <aside id="panel-voice" class="panel panel-voice" data-panel="voice" aria-label="语音面板" aria-hidden="true">
+    <header class="panel-head">
+      <h2 class="panel-title">语音对话</h2>
+      <button type="button" class="icon-btn" data-panel-close="voice" title="关闭" aria-label="关闭">✕</button>
+    </header>
+
+    <section class="panel-body">
+      <div class="voice-status-card">
+        <div id="voice-orb" class="voice-orb" aria-hidden="true"></div>
+        <div class="voice-status-text">
+          <strong id="voice-state-label">待机</strong>
+          <span id="voice-state-detail" class="hint">点下面的按钮开始说话</span>
+        </div>
+      </div>
+
+      <div class="voice-controls">
+        <button type="button" id="voice-ptt" class="primary-btn big">按住说话</button>
+        <button type="button" id="voice-toggle-listen" class="ghost-btn">开始连续聆听</button>
+        <button type="button" id="voice-stop" class="ghost-btn">停止发声</button>
+      </div>
+
+      <div id="voice-transcript" class="transcript-box" role="log" aria-live="polite">
+        <span class="hint">识别结果会显示在这里…</span>
+      </div>
+
+      <details class="collapsible" open>
+        <summary>语音合成链路</summary>
+        <div class="form-grid">
+          <label class="field field-inline field-wide">
+            <input type="checkbox" data-setting="voice.enabled" class="checkbox" />
+            <span>启用语音功能（关闭后不发语音、不听麦克风）</span>
+          </label>
+          <label class="field">
+            <span class="field-label">提供方</span>
+            <select id="voice-provider" data-setting="voice.ttsProvider" class="input">
+              <option value="browser">浏览器内置（开箱即用）</option>
+              <option value="http-openai">OpenAI 兼容 /v1/audio/speech</option>
+              <option value="http-gptsovits">GPT-SoVITS 本地服务</option>
+              <option value="http-edge">Edge-TTS 端点</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">浏览器音色</span>
+            <select id="voice-browser-voice" data-setting="voice.browserVoiceURI" class="input"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">语速 <output id="out-voice-rate"></output></span>
+            <input type="range" min="0.5" max="2" step="0.05" data-setting="voice.rate" class="input" />
+          </label>
+          <label class="field">
+            <span class="field-label">音调 <output id="out-voice-pitch"></output></span>
+            <input type="range" min="0.5" max="2" step="0.05" data-setting="voice.pitch" class="input" />
+          </label>
+          <label class="field">
+            <span class="field-label">音量 <output id="out-voice-volume"></output></span>
+            <input type="range" min="0" max="1" step="0.05" data-setting="voice.volume" class="input" />
+          </label>
+          <label class="field field-wide">
+            <span class="field-label">外部端点地址</span>
+            <input type="url" data-setting="voice.ttsEndpoint" class="input" placeholder="http://127.0.0.1:9880" />
+          </label>
+          <label class="field">
+            <span class="field-label">模型名（可选）</span>
+            <input type="text" data-setting="voice.ttsModel" class="input" placeholder="tts-1" />
+          </label>
+          <label class="field">
+            <span class="field-label">音色标识（可选）</span>
+            <input type="text" data-setting="voice.ttsVoice" class="input" placeholder="alloy" />
+          </label>
+          <label class="field field-wide secret-field">
+            <span class="field-label">端点 API Key（只存本次会话）</span>
+            <input type="password" id="voice-tts-key" data-secret="voice.ttsApiKey" class="input" autocomplete="off" placeholder="留空表示不需要" />
+          </label>
+        </div>
+        <button type="button" id="voice-selftest" class="ghost-btn">自检语音链路</button>
+        <pre id="voice-selftest-out" class="code-out hidden"></pre>
+      </details>
+
+      <details class="collapsible">
+        <summary>语音识别</summary>
+        <div class="form-grid">
+          <label class="field">
+            <span class="field-label">识别语言</span>
+            <select id="voice-stt-lang" data-setting="voice.sttLang" class="input">
+              <option value="zh-CN">中文（普通话）</option>
+              <option value="en-US">English (US)</option>
+              <option value="ja-JP">日本語</option>
+            </select>
+          </label>
+          <label class="field field-inline">
+            <input type="checkbox" data-setting="voice.sttContinuous" class="checkbox" />
+            <span>连续聆听模式</span>
+          </label>
+          <label class="field field-inline">
+            <input type="checkbox" data-setting="voice.autoListenAfterReply" class="checkbox" />
+            <span>回复后自动重新聆听</span>
+          </label>
+        </div>
+        <p class="hint">语音识别依赖浏览器 Web Speech API，目前 Chromium 系支持最好；不支持的浏览器会给出明确提示。</p>
+      </details>
+    </section>
+  </aside>
+
+  <!-- ========== 声音训练面板 ========== -->
+  <aside id="panel-train" class="panel panel-train" data-panel="train" aria-label="声音训练面板" aria-hidden="true">
+    <header class="panel-head">
+      <h2 class="panel-title">声音训练（自备数据）</h2>
+      <button type="button" class="icon-btn" data-panel-close="train" title="关闭" aria-label="关闭">✕</button>
+    </header>
+
+    <section class="panel-body">
+      <div class="notice notice-warn">
+        <strong>红线声明</strong>
+        <p>本插件内置的是<strong>训练工具链</strong>，不是训练好的声音。仓库不提供任何预训练模型、权重或音频素材。</p>
+        <p>请只使用<strong>你本人的声音</strong>，或已获得<strong>书面授权</strong>的声音素材。未经许可克隆他人声音，在中国受《民法典》第 1023 条（声音参照肖像权保护）约束，在日本受声优「声の権利」与事务所条款约束，在多数平台也违反服务条款。</p>
+        <label class="field field-inline">
+          <input type="checkbox" id="train-ack" data-setting="train.acknowledgeOwnership" class="checkbox" />
+          <span>我确认：我将使用的音频是我本人的声音，或我已获得权利人的明确授权。</span>
+        </label>
+      </div>
+
+      <ol class="steps">
+        <li class="step">
+          <h3>1. 准备数据</h3>
+          <p class="hint">单声道、≥16kHz、3–15 秒/条、低底噪、无混响。放到 <code>voice-training/data/&lt;说话人&gt;/</code>，该目录已被 .gitignore 排除，不会进仓库。</p>
+          <button type="button" id="train-template" class="ghost-btn">下载清单模板</button>
+          <button type="button" id="train-schema" class="ghost-btn">查看数据规范</button>
+        </li>
+
+        <li class="step">
+          <h3>2. 挑选并校验音频</h3>
+          <input type="file" id="train-files" class="input" accept="audio/*" multiple />
+          <div id="train-probe-result" class="probe-result"></div>
+          <button type="button" id="train-validate" class="ghost-btn">校验清单</button>
+        </li>
+
+        <li class="step">
+          <h3>3. 提交训练任务</h3>
+          <p class="hint">本插件不自带训练算力。请自行部署训练后端（见 <code>voice-training/scripts/README.md</code> 的三种路线），然后在下面填一个 HTTP 端点。</p>
+          <div class="form-grid">
+            <label class="field field-wide">
+              <span class="field-label">训练后端端点</span>
+              <input type="url" data-setting="train.endpoint" class="input" placeholder="http://127.0.0.1:9000/train" />
+            </label>
+            <label class="field field-wide">
+              <span class="field-label">任务状态查询端点（可选，留空则用上面的训练端点）</span>
+              <input type="url" data-setting="train.queueEndpoint" class="input" placeholder="http://127.0.0.1:9000/jobs" />
+            </label>
+            <label class="field">
+              <span class="field-label">最短片段（秒）</span>
+              <input type="number" min="0.5" max="60" step="0.5" data-setting="train.minClipSeconds" class="input" />
+            </label>
+            <label class="field">
+              <span class="field-label">最长片段（秒）</span>
+              <input type="number" min="1" max="120" step="0.5" data-setting="train.maxClipSeconds" class="input" />
+            </label>
+            <label class="field field-wide secret-field">
+              <span class="field-label">端点 Token（只存本次会话）</span>
+              <input type="password" data-secret="train.apiKey" class="input" autocomplete="off" />
+            </label>
+          </div>
+          <button type="button" id="train-submit" class="primary-btn">提交训练</button>
+          <pre id="train-out" class="code-out hidden"></pre>
+        </li>
+
+        <li class="step">
+          <h3>4. 接回插件</h3>
+          <p class="hint">训练完成后，在「语音面板 → 提供方」选择对应的 HTTP 端点，把地址指向你的推理服务即可。插件本身不搬运权重。</p>
+        </li>
+      </ol>
+    </section>
+  </aside>
+
+  <!-- ========== 设置面板 ========== -->
+  <aside id="panel-settings" class="panel panel-settings" data-panel="settings" aria-label="设置面板" aria-hidden="true">
+    <header class="panel-head">
+      <h2 class="panel-title">设置</h2>
+      <button type="button" class="icon-btn" data-panel-close="settings" title="关闭" aria-label="关闭">✕</button>
+    </header>
+
+    <section class="panel-body">
+      <details class="collapsible" open>
+        <summary>DeepSeek 接入</summary>
+        <div class="notice notice-info">
+          <p>API Key 只保存在<strong>本次浏览器会话</strong>（sessionStorage），关闭标签页即失效，不会写入 localStorage，也不会进入任何仓库文件。</p>
+        </div>
+        <div class="form-grid">
+          <label class="field field-wide secret-field">
+            <span class="field-label">API Key</span>
+            <input type="password" id="chat-api-key" data-secret="chat.apiKey" class="input" autocomplete="off" placeholder="sk-…" />
+          </label>
+          <label class="field field-wide">
+            <span class="field-label">Base URL</span>
+            <input type="url" data-setting="chat.baseUrl" class="input" placeholder="https://api.deepseek.com" />
+          </label>
+          <label class="field">
+            <span class="field-label">模型</span>
+            <input type="text" data-setting="chat.model" class="input" placeholder="deepseek-chat" />
+          </label>
+          <label class="field">
+            <span class="field-label">温度 <output id="out-chat-temperature"></output></span>
+            <input type="range" min="0" max="2" step="0.1" data-setting="chat.temperature" class="input" />
+          </label>
+          <label class="field">
+            <span class="field-label">最大回复长度</span>
+            <input type="number" min="64" max="8192" step="64" data-setting="chat.maxTokens" class="input" />
+          </label>
+          <label class="field">
+            <span class="field-label">请求超时（秒）</span>
+            <input type="number" id="chat-timeout" min="5" max="300" step="5" data-setting="chat.timeoutMs" data-scale="1000" class="input" />
+          </label>
+          <label class="field field-inline">
+            <input type="checkbox" data-setting="chat.stream" class="checkbox" />
+            <span>流式输出</span>
+          </label>
+          <button type="button" id="chat-test-conn" class="ghost-btn">测试连接</button>
+        </div>
+        <pre id="chat-test-out" class="code-out hidden"></pre>
+      </details>
+
+      <details class="collapsible" open>
+        <summary>人格与语气</summary>
+        <div class="form-grid">
+          <label class="field field-wide">
+            <span class="field-label">说话风格预设</span>
+            <select id="chat-persona-preset" data-setting="chat.personaPreset" class="input"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">对你的称呼</span>
+            <input type="text" data-setting="chat.userName" class="input" placeholder="你" />
+          </label>
+          <label class="field field-inline">
+            <input type="checkbox" data-setting="chat.rememberHistory" class="checkbox" />
+            <span>记住对话历史</span>
+          </label>
+          <label class="field">
+            <span class="field-label">保留轮数</span>
+            <input type="number" min="0" max="200" step="1" data-setting="chat.historyTurns" class="input" />
+          </label>
+          <label class="field field-inline">
+            <input type="checkbox" data-setting="chat.autoSpeak" class="checkbox" />
+            <span>自动朗读回复</span>
+          </label>
+        </div>
+        <p id="persona-desc" class="hint"></p>
+      </details>
+
+      <details class="collapsible">
+        <summary>桌宠</summary>
+        <div class="form-grid">
+          <label class="field">
+            <span class="field-label">尺寸 <output id="out-pet-scale"></output></span>
+            <input type="range" min="0.5" max="2" step="0.05" data-setting="pet.scale" class="input" />
+          </label>
+          <label class="field">
+            <span class="field-label">气泡停留（毫秒） <output id="out-pet-bubbleMs"></output></span>
+            <input type="range" min="1200" max="12000" step="200" data-setting="pet.bubbleMs" class="input" />
+          </label>
+          <label class="field field-inline">
+            <input type="checkbox" data-setting="pet.followCursor" class="checkbox" />
+            <span>眼神跟随鼠标</span>
+          </label>
+          <label class="field field-inline">
+            <input type="checkbox" data-setting="pet.showBubble" class="checkbox" />
+            <span>显示头顶气泡</span>
+          </label>
+          <label class="field field-inline">
+            <input type="checkbox" data-setting="pet.reducedMotion" class="checkbox" />
+            <span>降低动效幅度</span>
+          </label>
+          <div class="field field-wide">
+            <button type="button" id="pet-reset-pos" class="ghost-btn">重置桌宠位置</button>
+            <button type="button" id="pet-test-actions" class="ghost-btn">试播所有动作</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="collapsible">
+        <summary>界面</summary>
+        <div class="form-grid">
+          <label class="field">
+            <span class="field-label">主题</span>
+            <select data-setting="ui.theme" class="input">
+              <option value="auto">跟随系统</option>
+              <option value="dark">深色</option>
+              <option value="light">浅色</option>
+            </select>
+          </label>
+          <label class="field field-inline">
+            <input type="checkbox" data-setting="ui.compact" class="checkbox" />
+            <span>紧凑模式</span>
+          </label>
+          <label class="field">
+            <span class="field-label">界面语言</span>
+            <select data-setting="ui.language" class="input">
+              <option value="zh-CN">简体中文</option>
+              <option value="en-US">English (partial)</option>
+            </select>
+          </label>
+        </div>
+      </details>
+
+      <details class="collapsible">
+        <summary>数据与隐私</summary>
+        <ul class="plain-list">
+          <li>偏好设置 → <code>localStorage</code>（键前缀 <code>aemeath.prefs.</code>）</li>
+          <li>API Key / Token → <code>sessionStorage</code>（键前缀 <code>aemeath.secret.</code>），关标签页即失效</li>
+          <li>聊天记录 → <code>localStorage</code>（键前缀 <code>aemeath.kv.</code>），可随时清空</li>
+          <li>本插件<strong>不包含</strong>任何统计、上报、遥测</li>
+        </ul>
+        <div class="btn-row">
+          <button type="button" id="data-export" class="ghost-btn">导出我的设置</button>
+          <button type="button" id="data-clear-chat" class="ghost-btn">清空聊天记录</button>
+          <button type="button" id="data-reset" class="danger-btn">恢复默认设置</button>
+        </div>
+        <pre id="data-out" class="code-out hidden"></pre>
+      </details>
+
+      <details class="collapsible">
+        <summary>关于</summary>
+        <p class="hint">
+          <strong>爱弥斯桌宠（Aemeath Desktop Pet）</strong> v<span id="about-version">1.0.0</span><br />
+          仅供个人娱乐与学习使用，禁止商用。<br />
+          形象为原创程序化绘制；不含任何第三方作品素材、语音或台词。<br />
+          <a id="about-link" href="#" rel="noopener noreferrer">项目主页</a>
+        </p>
+        <p id="about-debug" class="hint"></p>
+      </details>
+    </section>
+  </aside>
+
+  <div id="toast-root" class="toast-root"></div>
+</div>
+
+<script type="module" src="./js/app.js"></script>
+<noscript><p style="padding:2rem">本插件需要启用 JavaScript 才能运行。</p></noscript>
+</body>
+</html>
