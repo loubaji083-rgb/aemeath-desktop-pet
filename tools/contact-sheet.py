@@ -1,16 +1,32 @@
-# 一次性工具（Lead）：把 6 个 mood 的帧拼成一张对照表，用于目视验收。
+# 把若干 mood 的帧拼成一张对照表，用于目视验收（开源工具，随仓库发布）。
+#
 # 用法：
-#   node tools/dump-pet-frame.mjs --mood happy --out tools/samples/frame-happy.json
-#   python tools/rasterize-canvas.py tools/samples/frame-happy.json tools/samples/frame-happy.png --scale 1
-#   python tools/.contact-sheet.py <输出路径>
+#   python tools/contact-sheet.py <输出.png> [mood1,mood2,...] [--dir <帧目录>]
+#
+# 帧目录默认 tools/samples，按 <dir>/frame-<mood>.png 查找。
+# 典型流程（每格都用同样的 --scale，否则格子大小会不一致）：
+#   for m in idle happy shy surprised sad angry; do
+#     node tools/dump-pet-frame.mjs --mood $m --out /tmp/$m.json
+#     python tools/rasterize-canvas.py /tmp/$m.json /tmp/frame-$m.png --scale 1
+#   done
+#   python tools/contact-sheet.py tools/samples/contact-sheet.png idle,happy,shy,surprised,sad,angry --dir /tmp
 import sys
 from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
 root = Path(__file__).resolve().parent
-samples = root / "samples"
-out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else root / ".contact-sheet.png"
-moods = sys.argv[2].split(",") if len(sys.argv) > 2 else ["idle", "happy", "shy", "surprised", "sad", "angry"]
+
+args = [a for a in sys.argv[1:]]
+dir_override = None
+if "--dir" in args:
+    i = args.index("--dir")
+    dir_override = args[i + 1] if i + 1 < len(args) else None
+    del args[i:i + 2]
+
+samples = Path(dir_override) if dir_override else (root / "samples")
+out_path = Path(args[0]) if args else (root / ".contact-sheet.png")
+moods = args[1].split(",") if len(args) > 1 else ["idle", "happy", "shy", "surprised", "sad", "angry"]
 COLS, PAD, LABEL = 3, 8, 22
 
 tiles = []
@@ -22,6 +38,10 @@ for m in moods:
     tiles.append((m, Image.open(p).convert("RGB")))
 if not tiles:
     raise SystemExit("没有任何帧可拼")
+
+sizes = {im.size for _, im in tiles}
+if len(sizes) > 1:
+    raise SystemExit(f"格子尺寸不一致 {sorted(sizes)}；请让所有帧用同一个 --scale 重出")
 
 w, h = tiles[0][1].size
 rows = (len(tiles) + COLS - 1) // COLS

@@ -127,6 +127,24 @@ def avg_color_of_gradient(g):
 CURVE_STEPS = 24
 
 
+def dedupe(pts):
+    """去掉相邻重复点。
+
+    Canvas 的 closePath() 会在路径末尾补一条「回到起点」的边；若路径本身已经
+    结束在起点上（draw.js 的 capsule() 就是这种形态），折线化后就会出现一对
+    重合点 + 一条零长度边。PIL 的 polygon() 扫描线遇到零长度边时会把自相交
+    轮廓只填出**一半**（右半），于是竖直的胶囊被渲染成「纺锤/锥形」——
+    脖子、腿、手臂因此看起来是锥体，而它们从来不是。本项目为此误诊过一轮。
+    """
+    out = []
+    for p in pts:
+        if not out or abs(p[0] - out[-1][0]) > 1e-9 or abs(p[1] - out[-1][1]) > 1e-9:
+            out.append(p)
+    while len(out) > 2 and abs(out[0][0] - out[-1][0]) <= 1e-9 and abs(out[0][1] - out[-1][1]) <= 1e-9:
+        out.pop()
+    return out
+
+
 def apply_matrix(m, x, y):
     a, b, c, d, e, f = m
     return (a * x + c * y + e, b * x + d * y + f)
@@ -153,6 +171,59 @@ def arc_points(cx, cy, rx, ry, rot, a0, a1, ccw, steps=None):
     return pts
 
 
+def fill_nonzero(size, pts, color):
+    """按 canvas 的**非零环绕规则（nonzero winding）**填充多边形，带 2x2 超采样抗锯齿。
+
+    返回与调用方同尺寸（设备像素）的 RGBA 图层。`size` 传设备像素尺寸。
+
+    为什么不能用 PIL 的 `ImageDraw.polygon()`：它用的是偶奇（even-odd）规则。
+    而本项目 `web/js/pet/draw.js` 的 `capsule()` 曾经生成**自相交**的「领结」
+    路径（两段弧扫同一侧），浏览器按非零环绕规则填充、PIL 按偶奇规则填充，
+    两者结果不同 —— 像素图里脖子/腿/手臂因此全变成「锥形/纺锤形」，
+    本项目为此误诊过整整一轮（连美术都被要求返工）。
+    """
+    w, h = size
+    ss = 2  # 超采样倍数
+    W, H = w * ss, h * ss
+    cover = Image.new("L", (W, H), 0)
+    cp = cover.load()
+    n = len(pts)
+    if n < 3:
+        return None
+    ys = [p[1] for p in pts]
+    y0 = max(0, int(math.floor(min(ys) * ss)) - 1)
+    y1 = min(H - 1, int(math.ceil(max(ys) * ss)) + 1)
+    for py in range(y0, y1 + 1):
+        yc = (py + 0.5) / ss
+        xs = []
+        for i in range(n):
+            xa, ya = pts[i]
+            xb, yb = pts[(i + 1) % n]
+            if ya == yb:
+                continue
+            if (ya > yc) != (yb > yc):
+                t = (yc - ya) / (yb - ya)
+                xs.append((xa + t * (xb - xa), 1 if yb > ya else -1))
+        if len(xs) < 2:
+            continue
+        xs.sort(key=lambda v: v[0])
+        wind = 0
+        for k in range(len(xs) - 1):
+            wind += xs[k][1]
+            if wind == 0:
+                continue
+            a = int(math.floor(xs[k][0] * ss + 0.5))
+            b = int(math.floor(xs[k + 1][0] * ss + 0.5))
+            for px in range(max(0, a), min(W - 1, b) + 1):
+                cp[px, py] = 255
+    if ss != 1:
+        cover = cover.resize((w, h), Image.BILINEAR)
+    sol = Image.new("RGBA", (w, h), color)
+    sol.putalpha(ImageChops.multiply(sol.getchannel("A"), cover))
+    return sol
+
+
+# LEDGER:nonzero-fill-replaced-do_fill
 def flatten(cmds):
     """把指令序列折线化成 [(x,y), ...]（局部坐标）。"""
     out = []
@@ -202,7 +273,17 @@ def flatten(cmds):
             # 当成了旋转角 rot —— 于是每个圆弧都被额外旋转 0 或 1 弧度、整段弧被平移，
             # 胶囊路径（腿/脖子/手臂）渲染成"!"形楔子。像素图因此看起来像"锥形四肢"，
             # 但那从来不是画法的问题。修法：显式传关键字实参。
+            #
+            # Canvas 规范：arc() 的起点与当前点不同时会自动补一条 lineTo（等价于
+            # 先 lineTo(弧起点) 再画弧）。draw.js 的 capsule() 正是依赖这个行为：
+            # 它的最后一段 A 前面紧跟 lineTo，真正的弧起点与当前点只差 0.5px。
+            # 这里若不补这条线，路径会被"拉"到弧起点，折线化后多出一根横贯中轴的
+            # 碟形闭合线 —— 胶囊被填成"纺锤/锥形"，看起来就像脖子和腿是锥体。
             pts = arc_points(x, y, r, r, 0, a0, a1, ccw=bool(cw))
+            if pts and cur is not None:
+                dx0, dy0 = pts[0][0] - cur[0], pts[0][1] - cur[1]
+                if (dx0 * dx0 + dy0 * dy0) > 1e-9:
+                    out.append(pts[0])
             out.extend(pts)
             if pts:
                 cur = pts[-1]
@@ -282,17 +363,16 @@ class Rasterizer:
         return [(x * self.s, y * self.s) for (x, y) in pts]
 
     def do_fill(self, cmds, m, color, alpha):
-        pts = self.scaled(self.dev_points(cmds, m))
+        pts = self.scaled(dedupe(self.dev_points(cmds, m)))
         if len(pts) < 3:
             return
         r, g, b, a = color
         a = int(a * max(0.0, min(1.0, alpha)))
         if a <= 0:
             return
-        lay = self.layer()
-        d = ImageDraw.Draw(lay)
-        d.polygon(pts, fill=(r, g, b, a))
-        self.composite(lay)
+        lay = fill_nonzero(self.img.size, pts, (r, g, b, a))
+        if lay is not None:
+            self.composite(lay)
 
     def do_stroke(self, cmds, m, color, width, alpha):
         pts = self.scaled(self.dev_points(cmds, m))
@@ -322,7 +402,7 @@ class Rasterizer:
         if stroke:
             d.line(pts + [pts[0]], fill=(r, g, b, a), width=max(1, int(round(width * self.s))))
         else:
-            d.polygon(pts, fill=(r, g, b, a))
+            d.polygon(dedupe(pts), fill=(r, g, b, a))
         self.composite(lay)
 
     def do_text(self, item):
@@ -381,10 +461,19 @@ class Rasterizer:
 
     # -- 主循环 -----------------------------------------------------------
     def run(self, ops):
-        for item in ops:
+        import os
+        trace_px = os.environ.get("AEMEATH_TRACE_PIXEL")
+        for idx, item in enumerate(ops):
             op = item.get("op")
             m = item.get("transform", [1, 0, 0, 1, 0, 0])
             alpha = item.get("alpha", 1)
+            if trace_px:
+                try:
+                    tx, ty = (int(v) for v in trace_px.split(","))
+                except Exception:
+                    tx, ty = 190, 220
+                px = self.img.getpixel((tx * self.s, ty * self.s))
+                print(f"  [{idx:3d}] {op:10s} style={str(item.get('style'))[:28]:28s} px({tx},{ty})={px}")
             if op == "fill":
                 self.do_fill(item["cmds"], m, parse_color(item.get("style")), alpha)
             elif op == "stroke":
@@ -400,7 +489,7 @@ class Rasterizer:
                 if x <= 0 and y <= 0 and w >= self.w and h >= self.h:
                     self.img = Image.new("RGBA", self.img.size, (0, 0, 0, 0))
             elif op == "clip":
-                pts = self.scaled(self.dev_points(item["cmds"], m))
+                pts = self.scaled(dedupe(self.dev_points(item["cmds"], m)))
                 if len(pts) >= 3:
                     mask = Image.new("L", self.img.size, 0)
                     ImageDraw.Draw(mask).polygon(pts, fill=255)

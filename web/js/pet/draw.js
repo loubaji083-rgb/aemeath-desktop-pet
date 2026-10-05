@@ -60,7 +60,16 @@ function ellipsePath(ctx, cx, cy, rx, ry, rot = 0) {
   ctx.ellipse(cx, cy, Math.max(0.1, rx), Math.max(0.1, ry), rot, 0, TAU);
 }
 
-/** 通过两点的胶囊（用来画四肢/发束） */
+/**
+ * 通过两点的胶囊（用来画四肢/发束/脖子）。
+ *
+ * 关键：两端的半圆必须各扫**一半**，而且方向要接得上 —— 第一段弧从
+ * 「右下」扫到「左下」（经过右下角），第二段弧从「左上」扫到「右上」（经过左上角）。
+ * 早先这里写的是 `a ± π/2` 与 `a + π/2 … a + 3π/2`，两段弧都在扫同一侧
+ * （当前点不在弧起点时 canvas 会自动补一条连线），于是路径变成自相交的
+ * 「领结」形：两个细长透镜瓣交叉。浏览器按非零环绕规则填充，结果只剩
+ * 半个宽度；像素图里脖子/腿/手臂因此全是**锥形**——本项目为此误诊过整整一轮。
+ */
 function capsule(ctx, x1, y1, x2, y2, r1, r2 = r1) {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -68,12 +77,15 @@ function capsule(ctx, x1, y1, x2, y2, r1, r2 = r1) {
   const a = Math.atan2(dy, dx);
   const nx = -dy / len;
   const ny = dx / len;
+  const HALF = Math.PI / 2;
   ctx.beginPath();
   ctx.moveTo(x1 + nx * r1, y1 + ny * r1);
   ctx.lineTo(x2 + nx * r2, y2 + ny * r2);
-  ctx.arc(x2, y2, r2, a - Math.PI / 2, a + Math.PI / 2);
+  // 端点半圆：从右法线侧扫到左法线侧（顺时针经过 +n 方向那一端）
+  ctx.arc(x2, y2, r2, a + HALF, a - HALF, true);
   ctx.lineTo(x1 - nx * r1, y1 - ny * r1);
-  ctx.arc(x1, y1, r1, a + Math.PI / 2, a + Math.PI * 1.5);
+  // 另一端：从左法线侧扫到右法线侧
+  ctx.arc(x1, y1, r1, a - HALF, a + HALF, true);
   ctx.closePath();
 }
 

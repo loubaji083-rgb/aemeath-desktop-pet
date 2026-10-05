@@ -211,6 +211,7 @@ function makeCtx() {
       cur?.cmds.push(['C', c1x, c1y, c2x, c2y, x, y]);
     },
     arc(x, y, r, a0, a1, ccw) {
+      if (process.env.AEMEATH_TRACE_ARC) console.error('ARC', JSON.stringify({ x, y, r, a0, a1, ccw }));
       cur?.cmds.push(['A', x, y, r, a0, a1, ccw ? 1 : 0]);
     },
     arcTo(x1, y1, x2, y2, r) {

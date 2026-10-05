@@ -135,6 +135,18 @@ python tools/rasterize-canvas.py tools/samples/frame-idle.json tools/samples/fra
 
 `tools/samples/` 里已经放了一份基准样本（`frame-idle.json` / `frame-idle.png`），改渲染后可以对照。
 
+想把多个情绪并排看，用对照表工具（每一格务必用**同一个 `--scale`**，否则格子大小会不一致）：
+
+```bash
+for m in idle happy shy surprised sad angry; do
+  node tools/dump-pet-frame.mjs --mood $m --out /tmp/frame-$m.json
+  python tools/rasterize-canvas.py /tmp/frame-$m.json /tmp/frame-$m.png --scale 1
+done
+python tools/contact-sheet.py tools/samples/contact-sheet.png idle,happy,shy,surprised,sad,angry --dir /tmp
+```
+
+> 注意：`tools/rasterize-canvas.py` 用**非零环绕规则**（和浏览器一致）填充路径，而不是 PIL `ImageDraw.polygon()` 的偶奇规则 —— 两者对**自相交**路径结果不同（本项目踩过：`capsule()` 曾两段弧扫同一侧，浏览器里也只填出半个宽度）。改这个文件时别把 `fill_nonzero()` 换回去。
+
 ## 自己动手做一版声音（简版）
 
 完整流程见 `voice-training/SCHEMA.md` 与 `voice-training/scripts/README.md`。
