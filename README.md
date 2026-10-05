@@ -147,7 +147,9 @@ done
 python tools/contact-sheet.py tools/samples/contact-sheet.png idle,happy,shy,surprised,sad,angry --dir /tmp
 ```
 
-> 注意：`tools/rasterize-canvas.py` 用**非零环绕规则**（和浏览器一致）填充路径，而不是 PIL `ImageDraw.polygon()` 的偶奇规则 —— 两者对**自相交**路径结果不同（本项目踩过：`capsule()` 曾两段弧扫同一侧，浏览器里也只填出半个宽度）。改这个文件时别把 `fill_nonzero()` 换回去。
+> 注意：`tools/rasterize-canvas.py` 用**非零环绕规则**（和浏览器一致）填充路径，而不是 PIL `ImageDraw.polygon()` 的偶奇规则 —— 两者对**自相交**路径结果不同。改这个文件时别把 `fill_nonzero()` 换回去。
+>
+> **形状对不对只能看像素**：`smoke-pet-render.mjs` 能证明「无 NaN、无异常」，但证明不了「画出来像不像」。`tools/smoke-pet-frame.mjs` 顶部注释记录了七种「形状自相交 / 锥形」启发式判据**全部失败**的经过，不要再往那里加同类判据。另外 `dump-pet-frame.mjs` 默认会先推帧到入场问候排空、再连续 240 帧静态才 dump，所以默认拍到的是**真待机姿态**（`--no-settle` 可关掉）。
 
 ## 自己动手做一版声音（简版）
 
