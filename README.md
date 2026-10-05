@@ -6,6 +6,12 @@
 
 ---
 
+## 先看一眼
+
+![6 种情绪的待机姿态](tools/samples/contact-sheet.png)
+
+上面这张对照表是 6 种情绪（idle / happy / shy / surprised / sad / angry）的**真实渲染输出**，不是手绘稿 —— 它们由 `node tools/dump-pet-frame.mjs` 录下 Canvas 指令流、再用 `python tools/rasterize-canvas.py` 原样回放成 PNG 得到。单帧基准在 [`tools/samples/frame-idle.png`](tools/samples/frame-idle.png)。
+
 ## 这个项目是什么
 
 爱弥斯是一个跑在浏览器里的桌面宠物小玩具：一个 Q 版的原创角色待在你的屏幕右下角，会呼吸、会眨眼、会跟着你的鼠标看，你戳她的头/脸/手/身体会有不同的反应，双击会长动作，拖着能换位置，长时间不理会自己发呆、打瞌睡。

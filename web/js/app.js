@@ -16,7 +16,7 @@ import { Store } from './core/store.js';
 import { $, $$, el, toast, formatTime, reportError, initShell, Panels, Bubble, applyTheme } from './core/busy.js';
 
 const VERSION = '1.0.0';
-const REPO_URL = 'https://github.com/your-name/aemeath-desktop-pet';
+const REPO_URL = 'https://github.com/loubaji083-rgb/aemeath-desktop-pet';
 
 /* ==========================================================================
    模块动态装配
