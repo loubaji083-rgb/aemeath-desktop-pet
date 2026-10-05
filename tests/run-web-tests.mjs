@@ -1,22 +1,27 @@
 #!/usr/bin/env node
 /**
- * run-web-tests.mjs —— 一条命令跑完本仓库全部「浏览器侧」验证（零 npm 依赖）
+ * run-web-tests.mjs —— 一条命令跑完本仓库「浏览器侧」验证（零 npm 依赖）。
  *
  * 为什么需要它：
  *   单跑 `node --test` 只能覆盖**单元语义**，抓不到「浏览器里白屏」这类问题——
  *   那类问题发生在模块图链接与顶层副作用阶段，任何 import 得到模块对象的单测都看不见。
- *   所以这里按「从外到内」的顺序跑四道关，前一道失败就不必跑后一道：
- *     1. selfcheck-http      真起静态服务，把 index.html 引到的每个资源都 200 拉一遍
+ *   所以这里按「从外到内」的顺序跑四关，前一道失败就没必要跑后一道：
+ *     1. selfcheck-http      真起静态服务，把 index.html 引到的每个资源都拉一遍
  *     2. selfcheck-modules   真 import 每个模块，核对导出契约与 12 个动作 id
- *     3. smoke-app-import    真加载 app.js（白屏级缺陷的唯一直接证据）
- *     4. node --test         单元语义 + 契约哨兵
+ *     3. selfcheck-api       真 import 核对 app.js 用到的成员（含 busy.js 再导出守卫）
+ *     4. smoke-app-import    真加载 app.js（白屏级缺陷的唯一直接证据）
+ *     5. node --test         单元语义 + 契约哨兵
  *
  * 用法：
  *   node tests/run-web-tests.mjs            # 全部四关
- *   node tests/run-web-tests.mjs --fast     # 跳过第 1 关（不起服务，CI 里省时间）
+ *   node tests/run-web-tests.mjs --fast     # 跳过第 1 关（不起服务，省时间）
  *   node tests/run-web-tests.mjs --only=3   # 只跑第 N 关
  *
- * 退出码：0 = 全绿；1 = 有任一关卡失败。
+ * 退出码：0 = 全绿；1 = 任一关卡失败。
+ *
+ * ⚠️ 编辑本文件只能用 read/write/edit 工具或 Node/Python 脚本。
+ *    Windows PowerShell 的 `Get-Content -Raw` / `Set-Content` 会按 ANSI(GBK) 解码 UTF-8，
+ *    把中文注释变成乱码并吞掉行结构（本项目已经因此毁过一次本文件）。
  */
 
 import { spawnSync } from 'node:child_process';
@@ -88,7 +93,9 @@ const STAGES = [
         return { ok: false, why: '找不到 `# fail` / `# pass` 行，TAP 输出可能被截断' };
       }
       if (fail !== 0) return { ok: false, why: `# fail = ${fail}` };
-      if (pass < 60) return { ok: false, why: `# pass = ${pass}，明显少于预期（用例被跳过或文件没被加载？）` };
+      // 门槛钉在 100（当前 103）：`>= 60` 会让「整整一个测试文件没被加载」这种塌陷沉默通过，
+      // 而 100 仍给「用例数小幅变动」留了余量。
+      if (pass < 100) return { ok: false, why: `# pass = ${pass}，明显少于预期（用例被跳过或文件没被加载？）` };
       // `not ok` 只允许来自 todo 哨兵与显式 skip，且必须能被 `# todo` / `# skip` 数解释掉。
       const unexplained = notOk - todoNotOk - skipNotOk;
       if (unexplained > 0) {
@@ -117,7 +124,7 @@ for (const stage of STAGES) {
   if (ONLY !== null && stage.n !== ONLY) continue;
   if (stage.skip) {
     skipped += 1;
-    console.log(`— 第 ${stage.n} 关 ${stage.name} → 跳过（${stage.skipReason}）`);
+    console.log(`⏭  第 ${stage.n} 关 ${stage.name} → 跳过（${stage.skipReason}）`);
     continue;
   }
 

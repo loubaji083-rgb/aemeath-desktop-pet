@@ -1,0 +1,35 @@
+# 统一换行符：仓库内一律 LF。
+# 为什么需要这个文件：Windows 上 `core.autocrlf` 默认可能把文本文件转成 CRLF，
+# 于是 `git status` 会在每次 checkout 后报一堆「已修改」，diff 里全是 \r 噪声，
+# 而 .github/workflows 里的 CI 又跑在 Linux 上 —— 两边看到的字节不一致，
+# 排查起来非常费劲（本项目已经把这条踩进 tests/README.md 的纪律里）。
+* text=auto eol=lf
+
+# 明确按文本处理（避免 Git 把中文源码当二进制而不给 diff）
+*.js    text
+*.mjs   text
+*.py    text
+*.json  text
+*.md    text
+*.html  text
+*.css   text
+*.yml   text
+*.yaml  text
+*.txt   text
+
+# 音频是本项目的一等公民数据（训练素材），必须按二进制处理，
+# 否则 Git 会尝试做行尾转换、破坏音频字节。
+*.wav   binary
+*.flac  binary
+*.mp3   binary
+*.m4a   binary
+*.ogg   binary
+*.opus  binary
+*.webm  binary
+
+# 二进制模型/权重（不应入库，这里只是保险）
+*.ckpt  binary
+*.pth   binary
+*.safetensors binary
+*.onnx  binary
+*.index binary

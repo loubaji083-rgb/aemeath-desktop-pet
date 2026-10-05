@@ -50,7 +50,7 @@ function goodManifest(overrides = {}) {
   return Object.assign(m, overrides);
 }
 
-test('createManifestTemplate()：模板结构齐全、通过校验但带 clips-empty 警告，且不含任何音频字段', () => {
+test('createManifestTemplate()：结构齐全、license 故意留占位而必须被拒、填上真实授权后放行', () => {
   const tpl = createManifestTemplate();
   assert.equal(tpl.schemaVersion, SCHEMA_VERSION);
   assert.equal(tpl.name, 'my-voice-dataset');
@@ -72,13 +72,29 @@ test('createManifestTemplate()：模板结构齐全、通过校验但带 clips-e
   assert.deepEqual(tpl.clips, [], '模板默认 clips 为空');
   assert.equal(tpl.consent.subject, 'speaker-a', 'consent.subject 应指向第一家说话人');
 
-  // 模板结构完整，但空 clips 会给一条警告（不是错误）
+  // 模板的 license 是**故意**留的占位说明，因此校验必须报 license-missing 硬错误。
+  // 这是刻意的设计：license 是红线字段，模板不能「看起来已经合法」，
+  // 否则用户会直接把占位文本当成有效授权提交上去。
   const check = validateManifest(tpl);
-  assert.equal(check.ok, true);
-  assert.deepEqual(check.errors, [], '模板本身不应有硬错误');
+  assert.equal(check.ok, false, '模板带着占位 license，不能通过校验');
+  assert.ok(
+    check.errors.some((e) => e.code === 'license-missing'),
+    `模板应报 license-missing，实际：${JSON.stringify(check.errors)}`,
+  );
   assert.ok(
     check.warnings.some((w) => w.code === 'clips-empty'),
     `模板应带 clips-empty 警告，实际：${JSON.stringify(check.warnings)}`,
+  );
+
+  // 用户填上真实授权说明之后，模板本身就不该再有硬错误（除空 clips 的警告外）
+  const filled = validateManifest({
+    ...tpl,
+    license: '由本人录制并书面授权，仅用于本地个人非商业用途，不再分发（授权人：张三，2025-01-01）',
+  });
+  assert.deepEqual(filled.errors, [], '填上真实授权后不应再有硬错误');
+  assert.ok(
+    filled.warnings.some((w) => w.code === 'clips-empty'),
+    `填上授权后仍应只有 clips-empty 警告，实际：${JSON.stringify(filled.warnings)}`,
   );
 
   // 自定义说话人

@@ -127,7 +127,34 @@ function parseArgs(argv) {
 function isPlaceholder(value) {
   const s = String(value ?? '').trim().toLowerCase();
   if (!s) return true;
-  return RULES.placeholderValues.some((p) => s === p || s.startsWith(`${p}：`) || s.startsWith(`${p}:`));
+  // 用「非字母数字/汉字边界」包住占位词做子串匹配，这样：
+  //   '待填'        → 命中（整串）
+  //   '来源：待填'  → 命中（后缀形态 —— 用户写「来源：待填」比只写「待填」自然得多，
+  //                   早先只判 s === p / startsWith(p+'：') 会漏掉这种变相占位，等于红线可被绕过）
+  //   '来源：todo'  → 命中
+  //   'todo list'   → 命中
+  //   '没有版权'    → 不命中（'无' 左侧是汉字，不算边界；避免把正常中文误判成占位）
+  // 注意：不能用 `\b` —— 它对汉字不生效（'待填' 两侧都是 \W，\b 无法定位）。
+  // 本函数与 web/js/training/index.js 的 isPlaceholder() 是**有意的双份实现**（一个跑在浏览器、
+  // 一个跑在 Node CLI），改一处必须同步改另一处；tests/toolchain.test.mjs 会对两者同时下断言。
+  const hit = (fragment) => RULES.placeholderValues.some((p) => {
+    const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, 'u');
+    return re.test(fragment);
+  });
+  if (hit(s)) return true;
+  // 「占位标签 + 冒号 + 正文」形态（`示例占位：请改写为…`）：整串的边界检测测不出来，
+  // 因为标签右侧紧跟着冒号后的汉字（'示例' 后面是 '占'）。只查冒号左边的**标签**：
+  //   · 标签以占位词开头（右侧不再要求边界），且
+  //   · 标签足够短（上限见下）—— 避免把「来源：原始录音」这种正常写法误杀。
+  const cut = s.search(/[：:]/);
+  if (cut > 0) {
+    const label = s.slice(0, cut).trim();
+    if (label && label.length <= 12 && RULES.placeholderValues.some((p) => label.startsWith(p))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function normalizeRelPath(file) {

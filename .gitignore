@@ -44,3 +44,9 @@ desktop.ini
 *.bak
 .cache/
 coverage/
+# 根目录/子目录里以点开头的临时脚本与中间产物（例如 `.tmp-e2e.mjs`、`.frame.json`）。
+# 注意：tools/samples/frame-*.json 与 frame-*.png 是**刻意提交**的基准样本，不隐藏、不受此条影响。
+.tmp-*
+.*.tmp
+tools/.*
+tests/.*

@@ -33,14 +33,25 @@ import {
 
 const TAU = Math.PI * 2;
 
+/*
+ * 圆角矩形：用 4 段 arc 拼，**不要用 arcTo**。
+ * 原因：tools/dump-pet-frame.mjs 把 arcTo 记成 'AT'，而 tools/rasterize-canvas.py:210
+ * 把 'AT' 简化成"直接连到 (x2,y2)"，圆角矩形会被拍平成缺角三角块（鞋、袖口都中招）；
+ * smoke-pet-frame.mjs:161 也把 'AT' 的控制点当顶点算包围盒 → 包围盒虚胖。
+ * 改成 arc 后几何完全等价（arc 走 'A' 分支，工具链能正确展开）。
+ */
 function roundRect(ctx, x, y, w, h, r) {
   const rr = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.lineTo(x + w - rr, y);
+  ctx.arc(x + w - rr, y + rr, rr, -Math.PI / 2, 0);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.arc(x + w - rr, y + h - rr, rr, 0, Math.PI / 2);
+  ctx.lineTo(x + rr, y + h);
+  ctx.arc(x + rr, y + h - rr, rr, Math.PI / 2, Math.PI);
+  ctx.lineTo(x, y + rr);
+  ctx.arc(x + rr, y + rr, rr, Math.PI, Math.PI * 1.5);
   ctx.closePath();
 }
 
@@ -230,29 +241,34 @@ function drawFrontHair(ctx, pose, phase) {
    * 否则整片刘海会再向上飘 312px，把眼睛的位置占掉（真实事故：眼/眉/嘴全被刘海盖住）。 */
   ctx.translate(FRONT_HAIR.cx, FRONT_HAIR.cy - BONES.head.y + bob);
 
-  // 主体：半圆的"锅盖"
+  // 主体：半圆的"锅盖"，下缘抬到额头线 base（旧版下缘在 ry*0.95，已经切进脸里）
   const top = -FRONT_HAIR.ry * 1.12;
+  const base = FRONT_HAIR.ry * 0.28;
+  const rx = FRONT_HAIR.rx;
   const body = [
+    [-rx * 0.9, base],
+    [-rx, FRONT_HAIR.ry * 0.2],
+    [-rx * 0.62, top + 12],
     [0, top],
-    [FRONT_HAIR.rx * 0.62, top + 12],
-    [FRONT_HAIR.rx, FRONT_HAIR.ry * 0.34],
-    [FRONT_HAIR.rx * 0.86, FRONT_HAIR.ry * 0.95],
+    [rx * 0.62, top + 12],
+    [rx, FRONT_HAIR.ry * 0.2],
+    [rx * 0.9, base],
   ];
   smoothPath(ctx, body, false);
 
-  // 逐束锯齿（每束有独立的倾斜与长度）
-  for (let i = 0; i < FRONT_HAIR.strands.length; i++) {
-    const s = FRONT_HAIR.strands[i];
+  /* 逐束锯齿：从右端往左收口，方向与上面路径的终点一致。
+   * 旧版从右端 lineTo 到最左侧的发束，填充后额头上多出一条横贯的对角线，
+   * 看着像"拉链"——这也是 Lead 返工单 ④ 的来源。 */
+  const strands = FRONT_HAIR.strands;
+  for (let i = strands.length - 1; i >= 0; i--) {
+    const s = strands[i];
     const tipLag = (s.x < 0 ? l0 : l1) * 0.4;
     const tipX = s.x + s.lean * s.w + tipLag;
-    const tipY = FRONT_HAIR.ry * 0.95 + s.drop;
-    const prev = i === 0 ? [FRONT_HAIR.rx * 0.86, FRONT_HAIR.ry * 0.95] : null;
-    if (prev) ctx.lineTo(prev[0], prev[1]);
-    ctx.quadraticCurveTo(s.x + s.w * 0.1, FRONT_HAIR.ry * 0.9, tipX, tipY);
-    ctx.quadraticCurveTo(s.x + s.w * 0.72, FRONT_HAIR.ry * 0.72, s.x + s.w * 0.85, FRONT_HAIR.ry * 0.42);
+    const tipY = base + s.drop;
+    const valleyX = i > 0 ? strands[i - 1].x + strands[i - 1].w * 0.5 : -rx * 0.9;
+    ctx.quadraticCurveTo(s.x + s.w * 0.5, base - 2, tipX, tipY);
+    ctx.quadraticCurveTo(s.x - s.w * 0.4, base + 1, valleyX, base - 2);
   }
-  ctx.lineTo(-FRONT_HAIR.rx, FRONT_HAIR.ry * 0.2);
-  ctx.quadraticCurveTo(-FRONT_HAIR.rx * 0.9, top + 6, 0, top);
   ctx.closePath();
   ctx.fillStyle = vGrad(ctx, top, FRONT_HAIR.ry + 30, PALETTE.hairLight, PALETTE.hairMain);
   ctx.fill();
@@ -298,11 +314,28 @@ function drawLegs(ctx) {
 
 /** 躯干 + 上衣（一次成形，避免"衣服和身体错位"） */
 function drawTorso(ctx, pose) {
+  /* 颈部（返工单 ③）：下巴 world 198 到上衣上沿 world 240 之间原本只有后发，
+   * 读起来像"头浮在身体上方"。先补一段可见的脖子，躯干随后盖住它的下缘，
+   * 再用一圈衣领把脖子根部和上衣连起来。
+   * 注意 r 不要上下差太多（13 → 13.5）：差太大渲染出来像一条下垂的舌头。 */
+  capsule(ctx, 0, -256, 0, -176, 13, 13.5);
+  ctx.fillStyle = vGrad(ctx, -256, -172, PALETTE.skinShade, PALETTE.skin);
+  ctx.fill();
+  strokeSoft(ctx, 'rgba(190,140,120,0.35)', 1.3);
+
   const pts = TORSO.map(([x, y]) => [x, y]);
   smoothPath(ctx, pts, true);
-  ctx.fillStyle = vGrad(ctx, -186, -66, PALETTE.clothLight, PALETTE.cloth);
+  ctx.fillStyle = vGrad(ctx, -214, -66, PALETTE.clothLight, PALETTE.cloth);
   ctx.fill();
   strokeSoft(ctx, PALETTE.clothLine, 2.2);
+
+  // 衣领：深一号的布料色（PALETTE.cuff 是近白色 #fdfdff，做领子会像胸口顶着一颗蛋）
+  ctx.save();
+  ellipsePath(ctx, 0, -206, 20, 9.5);
+  ctx.fillStyle = PALETTE.clothDark;
+  ctx.fill();
+  strokeSoft(ctx, PALETTE.clothLine, 1.6);
+  ctx.restore();
 
   // 前襟：一条 V 型领口 + 拉链/缝线
   ctx.save();

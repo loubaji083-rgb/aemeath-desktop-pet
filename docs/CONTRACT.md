@@ -235,6 +235,26 @@ export const Training = {
 
 **数据规范**：`voice-training/SCHEMA.md` 由 C 编写；`voice-training/data/.gitkeep` 保留，`data/**` 全部 gitignore。
 
+**命令行工具链**（`voice-training/scripts/`，同样由 C 拥有；纯 Node、零依赖、**不得联网**）：
+
+```js
+// make-manifest.mjs
+export const EXIT = { OK: 0, ERRORS: 1, USAGE: 2, MISSING: 3, INTERNAL: 70 };
+export const SCHEMA_VERSION = 1;
+export function collectAudioFiles(dataDir, forcedSpeakerId = ''); // -> [{ abs, rel, ext, speakerId }]
+export function probeFile(abs, ext);                              // -> { ok, duration, sampleRate, channels, sha256, bytes } | { ok:false, reason, message }
+export function buildManifest({ dataDir, name, language, speaker, previous, outFile }); // -> { manifest, report }
+export function manifestsInSync(a, b);                            // -> boolean（--check 用）
+```
+
+`validate-dataset.mjs` 提供 `--data`/`--manifest`/`--min-seconds`/`--max-seconds`/`--min-sample-rate`/`--strict-durations`/`--json`/`--quiet`，退出码同样是 `0/1/2/3/70`。
+
+三条硬约束（改这两个脚本时必须守住）：
+
+1. **幂等**：清单已存在时，`name`/`language`/`license`/`consent`/`speakers[].displayName`/`speakers[].consent`/`clips[].text`/`clips[].speaker`/`clips[].split`/`notes` 必须**原样保留**，只刷新由文件决定的字段。用户的手填授权说明不能被脚本冲掉。
+2. **`isPlaceholder()` 是有意双份实现**：`voice-training/scripts/validate-dataset.mjs` 与 `web/js/training/index.js` 各有一份，判定必须一致（边界正则形态，可识别「来源：待填」这类**后缀**占位）。改一处必须同步另一处，`tests/toolchain.test.mjs` 会对两边同时下断言。
+3. **训练后端 HTTP 契约**以 `voice-training/scripts/README.md` 第 4 节为准（提交/轮询的路径、请求体字段、`jobId|id|job_id` 三种响应键名、404/405 回落）。前端 `Training.submitJob/pollJob` 必须与该文档一致。
+
 ## 7. Core（Lead）供 A/B/C 使用
 
 `web/js/core/events.js`：见 §3。
@@ -280,5 +300,5 @@ export function escapeHtml(s)
 
 ## 9. 测试要求（D 负责框架，各自补测）
 
-- `node --test tests/` 必须全绿；纯函数必须可测（无 DOM 依赖）。
+- ⚠️ **不要用 `node --test tests/`**：Node 22 下它会报 `Cannot find module '...\tests'`，必须用 `node --test tests/*.test.mjs`（平台无关；CI 也走这一条）。`tests/run-web-tests.mjs` 是带门槛的聚合入口，见 `tests/README.md`。
 - 至少覆盖：`Persona.buildSystemPrompt/polish/splitBubbles`、`Training.validateManifest`、`DeepSeekClient` 请求体构造（注入 `fetchImpl` mock）、`Settings` 键集合与 `DEFAULTS` 一致性、`PetUI.getDebugState()` 的静态字段（用最小 DOM stub，若不可行则跳过并说明）。

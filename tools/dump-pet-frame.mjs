@@ -13,6 +13,12 @@
  *
  * 用法：
  *   node tools/dump-pet-frame.mjs [--mood idle] [--action tap-head] [--frames 45] [--out frame.json]
+ *
+ * 默认输出到 tools/samples/frame-<mood>.json（**不是隐藏名**）：这个目录里的帧
+ * 是「形象应该长什么样」的基准样本，会随仓库一起提交，方便你对照自己的改动。
+ * 回放成 PNG：
+ *   python tools/rasterize-canvas.py tools/samples/frame-idle.json tools/samples/frame-idle.png --scale 2
+ *
  * 退出码：0 = dump 成功（不代表画面好看，好看要看图）
  */
 
@@ -29,7 +35,7 @@ function arg(name, def) {
 const MOOD = arg('mood', 'idle');
 const ACTION = arg('action', '');
 const FRAMES = Number(arg('frames', 45));
-const OUT = arg('out', path.join(ROOT, 'tools', '.frame.json'));
+const OUT = arg('out', path.join(ROOT, 'tools', 'samples', `frame-${MOOD}.json`));
 
 /* ------------------------------------------------------------------ */
 /* 记录型 context                                                       */

@@ -107,7 +107,7 @@ jobs:
           if [ "$fail" != "0" ]; then
             echo "::error::有 $fail 条顶层测试失败"; exit 1
           fi
-          if [ "$pass" -lt 60 ]; then
+          if [ "$pass" -lt 100 ]; then
             echo "::error::只通过 $pass 条，明显少于预期（用例被跳过或文件没被加载？）"; exit 1
           fi
           unexplained=$((not_ok - not_ok_todo - not_ok_skip))

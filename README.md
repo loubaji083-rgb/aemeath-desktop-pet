@@ -31,9 +31,9 @@
 
 | 模块 | 能力 | 实现方式 |
 |---|---|---|
-| 形象 | Q 版约 2.5 头身，分层骨骼 + 弹簧插值、呼吸、眨眼、头发延迟跟随、口型同步 | `web/js/pet/` 纯 Canvas 2D 程序化绘制，**零图片素材** |
+| 形象 | Q 版大头小身（约 2.6 头身），分层骨骼 + 弹簧插值、呼吸、眨眼、头发延迟跟随、口型同步 | `web/js/pet/` 纯 Canvas 2D 程序化绘制，**零图片素材** |
 | 微交互 | 点头顶/点脸/点手/点身体、双击、长按、拖拽、落下、鼠标跟随、随机待机、打招呼、睡觉、唤醒，共 12 种动作 | `PetUI.trigger(action)`，动作可被冷却与降幅（`prefers-reduced-motion`） |
-| 情绪 | 10 种 mood（idle/happy/think/speak/listen/sleep/surprised/shy/sad/excited） | `PetUI.setMood()`，事件驱动 |
+| 情绪 | 11 种 mood（idle/happy/shy/surprised/sad/angry/sleepy/excited/think/listen/speak） | `PetUI.setMood()`，事件驱动；合法清单见 `web/js/pet/moods.js` 的 `MOODS` |
 | 聊天 | DeepSeek `/chat/completions`，SSE 流式，可中断，历史裁剪与本地持久化 | `web/js/chat/`，`fetch` + 手写 SSE 解析 |
 | 人设 | 4 个原创预设（活泼陪伴 / 温柔治愈 / 俏皮吐槽 / 冷静可靠）+ 可自定义角色卡；有「去 AI 腔」后处理 | `web/js/persona/`，见 [docs/PERSONA.md](docs/PERSONA.md) |
 | 语音出 | 浏览器 `speechSynthesis`（开箱即用）+ 3 种外部 HTTP TTS 适配器 | `web/js/voice/browser-tts.js`、`http-tts.js` |
@@ -111,7 +111,29 @@ aemeath-desktop-pet/
 node --test tests/*.test.mjs
 ```
 
-零依赖，纯 `node:test`，不需要 `npm install`。测试覆盖事件总线语义、设置与敏感值隔离、DeepSeek 请求构造与 SSE 分块解析、语气引擎纯函数、训练清单校验、模块导出契约。
+零依赖，纯 `node:test`，不需要 `npm install`。测试覆盖事件总线语义、设置与敏感值隔离、DeepSeek 请求构造与 SSE 分块解析、语气引擎纯函数、桌宠动作与渲染几何、训练清单校验与工具链幂等性、模块导出契约。
+
+> ⚠️ 用 `tests/*.test.mjs` 而**不是** `node --test tests/` —— Node 22 下后者会报 `Cannot find module`。
+
+除了单元测试，仓库还有几层**自检**（CI 里也跑，见 `.github/workflows/ci.yml`）：
+
+```bash
+node tools/selfcheck-http.mjs       # 静态服务器能起来、资源都能 200
+node tools/selfcheck-modules.mjs    # 模块图能加载、导出契约成立
+node tools/selfcheck-dom.mjs        # index.html 与 JS 的选择器 / 设置键一致
+node tools/smoke-app-import.mjs     # web/js/app.js 整条模块图可链接（顶层无副作用）
+node tools/smoke-pet-frame.mjs      # 形象几何自检：包围盒在画布内、脸部有绘制、命中区自洽
+node tests/run-web-tests.mjs        # 聚合入口（四关，带通过数门槛）
+```
+
+**像素级复核**（可选，需要 Pillow）：把某一帧的真实 Canvas 指令流回放成 PNG，用来「真的看一眼」形象对不对 ——
+
+```bash
+node tools/dump-pet-frame.mjs --mood idle
+python tools/rasterize-canvas.py tools/samples/frame-idle.json tools/samples/frame-idle.png --scale 2
+```
+
+`tools/samples/` 里已经放了一份基准样本（`frame-idle.json` / `frame-idle.png`），改渲染后可以对照。
 
 ## 自己动手做一版声音（简版）
 

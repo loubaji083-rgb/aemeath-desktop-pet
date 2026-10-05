@@ -102,6 +102,11 @@ exit 0 —— 当时该文件的 mtime 正在变化（队友在修另一个问�
   UTF-8，会把中文注释变成 U+FFFD 并吞掉行结构（本项目已经因此毁过一次
   `web/js/pet/constants.js`）。
 
+**最终验收前必须先「冻结写者」**：本项目已经出现过三次「测试跑到一半别人正在改代码」
+的假红（`tests/pet.test.mjs` 的动作用例、以及 training 哨兵），每次都白查十几分钟。
+发布前的最后一遍验证应当是：确认所有协作者已停手 → `Get-ChildItem web/js/**/*.js` 的
+mtime 已稳定 → 连跑 5~10 次全量 → 再取结果。
+
 ---
 
 ## 测试文件一览
@@ -118,6 +123,7 @@ exit 0 —— 当时该文件的 mtime 正在变化（队友在修另一个问�
 | `plugin.test.mjs` | `plugin/index.js` + `plugin/static-server.mjs`：路径安全、信任校验 fail-closed、两条注入通道、disposer 释放 |
 | `serve-cli.test.mjs` | `plugin/serve-cli.mjs`：参数解析（值不被吃掉）、真起服务托管 index.html、越界 4xx |
 | `app-modules.test.mjs` | **白屏级防回归**：`core/busy.js` 必须再导出 dom.js 的 `$`/`$$`/`el`/`toast`/`formatTime`、app.js 模块图可加载、静态 import 表逐个可解析、三个 tools 脚本退出码为 0 |
+| `toolchain.test.mjs` | `voice-training/scripts/`：真跑 `make-manifest` / `validate-dataset` 两个 CLI。合成 WAV → 清单幂等（手填字段不被冲掉）→ 删文件后清单收敛 → `--check` 一致/不一致 → 各退出码（0/1/2/3）→ 时长越界默认只警告、`--strict-durations` 才报错 → **工具链自己生成的骨架 license 必须被红线拦住** → `isPlaceholder()` 的 Node/浏览器双份实现结论一致。全部在 `mkdtempSync` 临时目录里跑，不碰仓库 |
 
 ### 不在 `node --test` 里、但值得知道的两个几何工具
 
@@ -142,8 +148,16 @@ test('占位值出现在后缀位置也必须被拒（DEFECT 回归哨兵）', {
 失败时输出 `not ok … # TODO <原因>`，计入 `# todo` 而**不计入 `# fail`**，
 于是「绿灯」仍然可信，而缺陷一旦被修好，这条会自动转绿 —— 那时把 `{ todo }` 摘掉即可。
 
-**当前有 1 条哨兵**：`tests/training.test.mjs` 的 `isPlaceholder` 后缀形态
-（`'来源：待填'` 漏判）。它属于 `web/js/training/index.js`。
+**当前没有哨兵**（`{ todo }` 数量为 0，全量 `# todo 0`）。历史上出现过两条，都已修好并转成硬断言：
+
+1. `tests/training.test.mjs` 的 `isPlaceholder` **后缀**形态（`'来源：待填'` 漏判）—— 授权红线可被一句话绕过。
+2. `tests/toolchain.test.mjs` 的 `isPlaceholder` **占位标签**形态（`'示例占位：请改写为…'` 漏判）——
+   这条更难看：**工具链自己生成的骨架清单能通过它自己的红线校验**（`make-manifest` 生成 → `validate-dataset` 放行）。
+   修法是两边同步追加「占位标签 + 冒号 + 正文」判定：只查冒号左边的标签是否以占位词开头且足够短。
+
+> 这两条都属于同一类：**边界正则在「占位词右侧紧接汉字」时会漏判**。
+> 改 `isPlaceholder` 时必须同时改 `voice-training/scripts/validate-dataset.mjs` 与
+> `web/js/training/index.js`（有意双份实现），`tests/toolchain.test.mjs` 会对两边同时下断言。
 
 ---
 
