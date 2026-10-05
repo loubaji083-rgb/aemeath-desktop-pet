@@ -12,12 +12,15 @@
  *   再由 tools/rasterize-canvas.py（Pillow）回放成 PNG。
  *
  * 用法：
- *   node tools/dump-pet-frame.mjs [--mood idle] [--action tap-head] [--frames 45] [--out frame.json]
+ *   node tools/dump-pet-frame.mjs [--mood idle] [--action tap-head] [--frames 45] [--out frame.json] [--no-settle]
  *
  * 默认输出到 tools/samples/frame-<mood>.json（**不是隐藏名**）：这个目录里的帧
  * 是「形象应该长什么样」的基准样本，会随仓库一起提交，方便你对照自己的改动。
  * 回放成 PNG：
  *   python tools/rasterize-canvas.py tools/samples/frame-idle.json tools/samples/frame-idle.png --scale 2
+ *
+ * `--no-settle`：不等入场问候（`greet`）播完就 dump。**默认必须等**，理由见下方
+ * `waitSettled()` 上方的长注释（不等的话拍到的是打招呼的中间姿态，会把观感评审带偏）。
  *
  * 退出码：0 = dump 成功（不代表画面好看，好看要看图）
  */
@@ -36,6 +39,8 @@ const MOOD = arg('mood', 'idle');
 const ACTION = arg('action', '');
 const FRAMES = Number(arg('frames', 45));
 const OUT = arg('out', path.join(ROOT, 'tools', 'samples', `frame-${MOOD}.json`));
+/** 是否等入场问候排空再 dump（默认 true；`--no-settle` 关闭） */
+const SETTLE = !process.argv.includes('--no-settle');
 
 /* ------------------------------------------------------------------ */
 /* 记录型 context                                                       */
@@ -353,6 +358,42 @@ defineGlobal('dispatchEvent', () => true);
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * 一直推帧，直到「没有动作在播」且「所有动作冷却都排空」，并保持一段静态。
+ *
+ * 为什么不只是「播完当前动作」：`web/js/pet/index.js` 的待机调度器会累计
+ * `idleTimer`，一过 `TIMING.idleActionMinMs`（9000ms）就自动 `trigger('idle-random')`。
+ * 只等当前动作结束、又多推几十帧，可能正好撞上它，于是又拍到一个随机动作。
+ * 所以这里对所有动作冷却都判「已排空」（`cooldownLeft <= 0`），再连续静态 240 帧
+ * （4s，足够跨过任何一个冷却/调度窗口）才算真的静态。
+ *
+ * 注意 `playing` 是**数组**不是布尔（`getDebugState().playing`）——写成 `if (playing)`
+ * 会把空数组当「在播」，本项目踩过。
+ *
+ * 返回值只用于打印诊断，便于一眼看出「等了几帧、排空了哪些冷却」。
+ */
+function waitSettled(maxFrames = 4000) {
+  const drained = {};
+  let frames = 0;
+  let staticRun = 0;
+  while (frames < maxFrames) {
+    PetUI.update(1 / 60);
+    frames += 1;
+    const st = PetUI.getDebugState ? PetUI.getDebugState() : null;
+    if (!st) break;
+    const playing = Array.isArray(st.playing) ? st.playing.length : 0;
+    const cds = st.cooldowns || {};
+    for (const [k, v] of Object.entries(cds)) if (v > 0) drained[k] = Math.round(v);
+    if (playing === 0 && Object.values(cds).every((v) => !(v > 0))) {
+      staticRun += 1;
+      if (staticRun >= 240) break;
+    } else {
+      staticRun = 0;
+    }
+  }
+  return { cooldowns: drained, frames, staticRun };
+}
+
 const petMod = await import(pathToFileURL(path.join(ROOT, 'web', 'js', 'pet', 'index.js')).href);
 const { PetUI } = petMod;
 
@@ -362,6 +403,19 @@ PetUI.setMood(MOOD);
 
 // 先跑若干帧让它进入稳定姿态（弹簧收敛）
 for (let i = 0; i < 60; i += 1) PetUI.update(1 / 60);
+
+/*
+ * ⚠️ 必须先把 mount 自带的入场问候（`greet`）排空，否则 dump 到的是**打招呼的收尾姿态**。
+ *
+ * 踩过的坑（pet-dev 从像素反推发现）：`PetUI.mount` 内部会 `rig.trigger('greet', {force:true})`
+ * （`web/js/pet/index.js` 的 mount），动作时长 1.9s ≈ 114 帧。旧版本只跑 60 帧稳态 + FRAMES/2
+ * 帧就 dump —— 默认 45 帧时总共才 82 帧，greet 还在播，于是**基准样本和 6 mood 对照表
+ * 拍的全是「双手抬到身前的打招呼中间姿态」，被当成待机形态**，整整一轮的观感评审都建在这上面。
+ *
+ * 所以默认 `--settle`：一直推帧直到「没有动作在播 + 相关冷却已排空」，再开始数帧。
+ * 用 `--no-settle` 关闭（想看问候动画时用），或 `--frames N` 调 dump 时的帧数。
+ */
+const settleInfo = SETTLE ? waitSettled() : { cooldowns: {}, frames: 0, staticRun: 0 };
 
 // 清空：只保留「稳定姿态 + 可选动作进行中」的指令
 ops.length = 0;
@@ -383,9 +437,17 @@ const payload = {
   actionResult,
   frames: FRAMES,
   midOpIndex: midOps,
+  settled: SETTLE ? { frames: settleInfo.frames, staticRun: settleInfo.staticRun, drained: settleInfo.cooldowns } : null,
   canvas: { width: 360, height: 480 },
   ops,
 };
 fs.writeFileSync(OUT, JSON.stringify(payload));
-console.log(`mood=${MOOD} action=${ACTION || '(none)'} result=${JSON.stringify(actionResult)} frames=${FRAMES} ops=${ops.length} midOpIndex=${midOps}`);
+console.log(
+  `mood=${MOOD} action=${ACTION || '(none)'} result=${JSON.stringify(actionResult)} frames=${FRAMES} ops=${ops.length} midOpIndex=${midOps}`
+);
+console.log(
+  SETTLE
+    ? `已等入场问候排空：推了 ${settleInfo.frames} 帧，末段静态 ${settleInfo.staticRun} 帧，排空的冷却 ${JSON.stringify(settleInfo.cooldowns)}`
+    : '⚠️ --no-settle：没有等入场问候，拍到的可能是 greet 的中间姿态'
+);
 console.log(`已写出 ${OUT}`);

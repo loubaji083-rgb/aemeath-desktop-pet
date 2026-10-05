@@ -182,6 +182,46 @@ function worldBBox(o) {
 const union = (a, b) => (!a ? b : !b ? a : { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) });
 const inBBox = (p, b, pad = 0) => p[0] >= b.x0 - pad && p[0] <= b.x1 + pad && p[1] >= b.y0 - pad && p[1] <= b.y1 + pad;
 
+/* ── 关于「路径形状」的检查：本文件**故意不做**，理由写在下面 ──
+ *
+ * 需求来源：`web/js/pet/draw.js` 的 `capsule()` 曾经两段 `ctx.arc()` 都扫同一侧，
+ * 一度让脖子/腿/手臂在像素图里呈现「锥形」。很自然会想加一条机械判据，免得再犯。
+ *
+ * 我为此在 2026 年这轮里试了**六种**判据，**全部失败**，逐条留档以免后人重走：
+ *   1) 折线化后数自相交边对 → 稳定误报
+ *      原因：`opPoints()` 把 `A` 近似成「y 钉在 cy 上的 16 边形」，两端半径不同
+ *      的胶囊会被这层近似自己切出交叉。
+ *   2) |有向面积| / 凸包面积 < 0.55 → 稳定误报（同一近似原因）
+ *   3) 密铺格心沿 +x 打射线、穿越次数 >= 2 判自相交 → 稳定误报
+ *      原因：地面阴影椭圆自己就报「17 个格心 >= 2 次」；凹口/多段轮廓在粗网格上
+ *      必然 >= 2 次。
+ *   4) 整条路径 |Σ叉积| / Σ|叉积| < 0.6 → 稳定误报
+ *      原因：shoelace 的叉积含**与原点有关**的项，离画布原点越远的部件比值越低
+ *      （地面阴影在 y≈450 掉到 0.08）。
+ *   5) 只取弧段点的 |Σ叉积| / Σ|叉积| → **无法区分**：修好与坏掉的 capsule 都是 0.119，
+ *      折算成质心坐标系后两者又都变成 1.000。
+ *   6) 「圆心到切平面距离 == 半径」局部守恒律 → **无法区分**：好坏都是 1.000。
+ *      根因是本项目那段的几何：两端圆心正好落在**切平面**上，
+ *      两段弧各自取「右半圆」还是「另一半圆」，都同时把该端切平面朝外推到 ±r，
+ *      包围盒完全无法分辨。
+ *   7) 宽度剖面法（沿长轴分桶量填充宽度，判「单端单调收窄成尖」）→ 实测**抓不到**
+ *      真实缺陷：对 4bf1fd3 的 capsule() 也不报。而且它在「刘海对称尖角」上误报过。
+ *
+ * **真正的结论（重要）**：`smoke-pet-render.mjs` 只证明「无 NaN、无异常、迭代数正常」，
+ * 它**在原理上**抓不到「形状对了没有」；形状只能靠**像素**看。已落地的可靠闭环是：
+ *
+ *     node tools/dump-pet-frame.mjs --mood idle --out tools/samples/frame-idle.json
+ *     python tools/rasterize-canvas.py tools/samples/frame-idle.json tools/samples/frame-idle.png --scale 2
+ *     # 然后用 read_image 看图；`tools/contact-sheet.py` 可以一次拼 6 种情绪
+ *
+ * `rasterize-canvas.py` 的 `fill_nonzero()` 按**非零环绕规则**填充（与浏览器一致），
+ * 并带 2x2 超采样，所以它能忠实暴露这类几何问题 —— 别把那里的 `fill_nonzero` 换回
+ * `ImageDraw.polygon()`（那是偶奇规则）。
+ *
+ * 本文件保留的几何断言（包围盒、尺寸、脸部绘制条数、脚/阴影对齐、命中区自洽）
+ * 都是**结构性**的，不会误报；请不要再往这里加「形状像不像」的启发式判据。
+ */
+
 /**
  * 诊断用：按"最靠上"排序列出若干条绘制指令，带序号 / 类型 / 世界包围盒 / 变换矩阵 / 前几个路径点。
  *
@@ -233,7 +273,6 @@ const notes = [];
 const W = constMod.CANVAS_W, H = constMod.CANVAS_H;
 const HEAD = constMod.HEAD, FACE = constMod.FACE, BONES = constMod.BONES;
 const OY = constMod.ORIGIN_Y, OX = constMod.ORIGIN_X;
-
 const worldHead = { x0: OX + HEAD.cx - HEAD.rx, y0: OY + HEAD.cy - HEAD.ry, x1: OX + HEAD.cx + HEAD.rx, y1: OY + HEAD.cy + HEAD.ry };
 const worldFace = { x0: OX + FACE.cx - FACE.rx, y0: OY + FACE.cy - FACE.ry, x1: OX + FACE.cx + FACE.rx, y1: OY + FACE.cy + FACE.ry };
 
