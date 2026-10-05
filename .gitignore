@@ -25,6 +25,8 @@ config.local.json
 node_modules/
 dist/
 build/
+__pycache__/
+*.pyc
 *.log
 npm-debug.log*
 pnpm-debug.log*

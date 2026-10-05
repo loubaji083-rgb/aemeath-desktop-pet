@@ -197,13 +197,18 @@ def flatten(cmds):
             cur = (x1, y1)
         elif k == "A":
             x, y, r, a0, a1, cw = cmd[1:7]
-            pts = arc_points(x, y, r, r, 0, a0, a1, bool(cw))
+            # 注意第 8 个位置参数是 **ccw**，不是 rot！
+            # 早先这里写成 arc_points(x, y, r, r, 0, a0, a1, bool(cw))，把「逆时针标志」
+            # 当成了旋转角 rot —— 于是每个圆弧都被额外旋转 0 或 1 弧度、整段弧被平移，
+            # 胶囊路径（腿/脖子/手臂）渲染成"!"形楔子。像素图因此看起来像"锥形四肢"，
+            # 但那从来不是画法的问题。修法：显式传关键字实参。
+            pts = arc_points(x, y, r, r, 0, a0, a1, ccw=bool(cw))
             out.extend(pts)
             if pts:
                 cur = pts[-1]
         elif k == "E":
             x, y, rx, ry, rot, a0, a1, cw = cmd[1:9]
-            pts = arc_points(x, y, rx, ry, rot, a0, a1, bool(cw))
+            pts = arc_points(x, y, rx, ry, rot, a0, a1, ccw=bool(cw))
             out.extend(pts)
             if pts:
                 cur = pts[-1]
