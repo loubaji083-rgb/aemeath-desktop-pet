@@ -1,0 +1,22 @@
+# voice-training/data —— 把你的录音放在这里
+
+```
+voice-training/
+  data/
+    speaker-a/          ← 一个说话人一个子目录（目录名就是清单里的 speaker id）
+      clip-001.wav      ← 单声道、≥16kHz、3–15 秒/条、低底噪
+      clip-002.wav
+    speaker-b/
+      ...
+  manifests/
+    dataset.manifest.json   ← 由 make-manifest.mjs 生成，**不要手改结构**
+```
+
+- 本目录下的音频**永不提交**（`.gitignore` 已排除 `voice-training/data/**`，只保留这个 `.gitkeep`）。
+- 根目录下直接放文件会被算作 `speaker-a`；想用单说话人模式就加 `--speaker <id>`。
+- 只能使用**本人的声音**或**已获得明确书面授权**的声音。第三方作品/声优的音频一律不要放进来。
+- 生成清单：`node voice-training/scripts/make-manifest.mjs`
+- 校验清单：`node voice-training/scripts/validate-dataset.mjs`
+
+详细的音频规范、清单字段、授权与告知同意要求见 [`../SCHEMA.md`](../SCHEMA.md)；
+三条可选训练路线的操作步骤见 [`../scripts/README.md`](../scripts/README.md)。

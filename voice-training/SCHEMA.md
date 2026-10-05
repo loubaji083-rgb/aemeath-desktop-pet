@@ -41,7 +41,8 @@ voice-training/
 │   │   └── ...
 │   └── speaker-b/                ← 多人可选；单人也建议放在一个子目录里
 └── manifests/
-    └── dataset.manifest.json     ← 清单（**可以入库**，它只是元数据）
+    ├── dataset.manifest.json     ← 清单（**可以入库**，它只是元数据）
+    └── example.manifest.json     ← 工具真实生成的示例；license 仍是占位串，**故意**校验失败
 ```
 
 两条硬规则：

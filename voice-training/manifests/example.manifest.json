@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "name": "aemeath-voice-example",
+  "language": "zh-CN",
+  "license": "示例占位：请改写为真实授权说明，例如「说话人本人书面授权，仅用于本地个人非商业用途，不再分发」",
+  "consent": {
+    "obtained": true,
+    "subject": "speaker-a",
+    "form": "written",
+    "date": "",
+    "scope": "仅用于本地个人桌宠语音模型训练，不再分发",
+    "note": "只能使用本人声音或已获得明确书面授权的声音；请勿使用任何第三方作品/声优的声音素材。"
+  },
+  "speakers": [],
+  "clips": [],
+  "notes": "本清单不含音频本身。音频放在 voice-training/data/<说话人>/ 下（voice-training/data/** 已被 .gitignore 排除）。license 与 consent 是红线字段，必须由你本人填真实授权说明。"
+}
