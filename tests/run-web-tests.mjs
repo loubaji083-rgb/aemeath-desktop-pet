@@ -8,9 +8,13 @@
  *   所以这里按「从外到内」的顺序跑四关，前一道失败就没必要跑后一道：
  *     1. selfcheck-http      真起静态服务，把 index.html 引到的每个资源都拉一遍
  *     2. selfcheck-modules   真 import 每个模块，核对导出契约与 12 个动作 id
- *     3. selfcheck-api       真 import 核对 app.js 用到的成员（含 busy.js 再导出守卫）
- *     4. smoke-app-import    真加载 app.js（白屏级缺陷的唯一直接证据）
- *     5. node --test         单元语义 + 契约哨兵
+ *     3. smoke-app-import    真加载 app.js（白屏级缺陷的唯一直接证据）
+ *     4. node --test         单元语义 + 契约哨兵（TAP 额外复核，全 skip 时退出码也是 0）
+ *
+ * CI（`.github/workflows/ci.yml`）在这之外还单独跑了两关，本入口没有重复：
+ *     selfcheck-api（app.js 用到的成员，含 busy.js 再导出守卫）
+ *     selfcheck-dom（index.html 的 #id 与 JS 选择器、DEFAULTS 键一一对上）
+ *     smoke-pet-frame（渲染几何：包围盒在画布内、脸部有绘制、命中区自洽）
  *
  * 用法：
  *   node tests/run-web-tests.mjs            # 全部四关

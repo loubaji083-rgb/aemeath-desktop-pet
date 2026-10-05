@@ -405,22 +405,22 @@ function drawArms(ctx, pose) {
     const shoulder = { x: side * BONES.shoulder.x, y: BONES.shoulder.y };
     const h = handPos(pose, side, hx, hy);
 
-    // 袖子
-    capsule(ctx, shoulder.x, shoulder.y, h.x, h.y, 15.5, 11.5);
+    // 手臂：整条是布料袖子，末端由手套盖住（第三轮返工单 ①：手垂到 world 406，
+    // 手臂自然变长；半径从 15.5/11.5 收到 13/10.5，保持 Q 版粗短感但不鼓）
+    capsule(ctx, shoulder.x, shoulder.y, h.x, h.y, 13, 10.5);
     ctx.fillStyle = vGrad(ctx, shoulder.y, h.y, PALETTE.clothLight, PALETTE.cloth);
     ctx.fill();
     strokeSoft(ctx, PALETTE.clothLine, 2);
 
-    // 袖口
-    ctx.save();
-    ctx.translate(h.x, h.y);
-    const ang = Math.atan2(h.y - shoulder.y, h.x - shoulder.x);
-    ctx.rotate(ang);
-    roundRect(ctx, -8, -11.5, 16, 23, 7);
-    ctx.fillStyle = PALETTE.cuff;
+    /* 短袖（第三轮返工单 ②）：旧版把 roundRect(16×23) 套在**手腕**上，
+     * 比手臂宽出一圈、边缘还是外凸圆弧，整条胳膊像"调色板"。
+     * 现在改成从肩点到手臂 52% 处的一段短袖，只比手臂宽 3px，外缘略外扩。 */
+    const sx = lerp(shoulder.x, h.x, 0.52);
+    const sy = lerp(shoulder.y, h.y, 0.52);
+    capsule(ctx, shoulder.x, shoulder.y, sx, sy, 16, 14.2);
+    ctx.fillStyle = vGrad(ctx, shoulder.y, sy, PALETTE.clothLight, PALETTE.cloth);
     ctx.fill();
-    strokeSoft(ctx, 'rgba(190,200,235,0.9)', 1.4);
-    ctx.restore();
+    strokeSoft(ctx, PALETTE.clothLine, 2);
   }
 }
 

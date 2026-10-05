@@ -123,8 +123,10 @@ node tools/selfcheck-modules.mjs    # 模块图能加载、导出契约成立
 node tools/selfcheck-dom.mjs        # index.html 与 JS 的选择器 / 设置键一致
 node tools/smoke-app-import.mjs     # web/js/app.js 整条模块图可链接（顶层无副作用）
 node tools/smoke-pet-frame.mjs      # 形象几何自检：包围盒在画布内、脸部有绘制、命中区自洽
-node tests/run-web-tests.mjs        # 聚合入口（四关，带通过数门槛）
+node tests/run-web-tests.mjs        # 聚合入口（四关：托管/模块契约/app.js 加载/单元测试，带通过数门槛）
 ```
+
+CI（`.github/workflows/ci.yml`）比上面这个聚合入口更细一层：它额外单独跑 `selfcheck-api`、`selfcheck-dom` 与 `smoke-pet-frame`，并在最后复跑一次 `node --test tests/*.test.mjs`（带 TAP 复核）。本地想一次跑全，把上面六条 + `node tests/run-web-tests.mjs` 依次跑一遍即可；或者直接看 CI 的步骤列表照抄。
 
 **像素级复核**（可选，需要 Pillow）：把某一帧的真实 Canvas 指令流回放成 PNG，用来「真的看一眼」形象对不对 ——
 
